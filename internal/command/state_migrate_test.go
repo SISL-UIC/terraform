@@ -23,13 +23,19 @@ func TestStateMigrate_basic(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
+
+	// create empty lockfile
 	_, err := os.Create(filepath.Join(tmpDir, ".terraform.lock.hcl"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// create migration instructions
+	// TODO
+
 	t.Chdir(tmpDir)
 
-	args := []string{}
+	args := []string{"-no-color"}
 	code := c.Run(args)
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)

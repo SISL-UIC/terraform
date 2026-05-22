@@ -5,6 +5,7 @@ package command
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -35,25 +36,76 @@ func (c *StateMigrateCommand) Run(rawArgs []string) int {
 
 	c.Meta.input = args.InputEnabled
 
-	if _, err := os.Stat(args.SourceLockFilePath); err != nil {
-		diags = diags.Append(tfdiags.Sourceless(
-			tfdiags.Error,
-			"Unreadable source provider lock file",
-			err.Error(),
-		))
+	if args.SourceLockFilePath != "" {
+		if _, err := os.Stat(args.SourceLockFilePath); err != nil {
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Error,
+				"Unreadable source provider lock file",
+				fmt.Sprintf("%q: %s", args.SourceLockFilePath, err.Error()),
+			))
+		}
 	}
 
-	// TODO: Is there a reason to do migration without a lock file?
-	if _, err := os.Stat(args.DestinationLockFilePath); err != nil {
-		diags = diags.Append(tfdiags.Sourceless(
-			tfdiags.Error,
-			"Unreadable destination provider lock file",
-			err.Error(),
-		))
+	// It is valid for the destination lockfile to be missing
+	// while state exists - e.g. through the use of builtin provider
+	// or outputs and use of a builtin backend
+	// (as opposed to pluggable state store).
+	if args.DestinationLockFilePath != "" {
+		if _, err := os.Stat(args.DestinationLockFilePath); err != nil {
+			diags = diags.Append(tfdiags.Sourceless(
+				tfdiags.Error,
+				"Unreadable destination provider lock file",
+				fmt.Sprintf("%q: %s", args.DestinationLockFilePath, err.Error()),
+			))
+		}
 	}
 
-	// TODO: implement
-	// stateMigrate.Log("migrating from %s to %s", "source", "destination")
+	// return validation errors early if there are any
+	if diags.HasErrors() {
+		stateMigrate.Diagnostics(diags)
+		return 1
+	}
+
+	c.Meta.includeStateMigrateFiles = true
+	root, mDiags := c.Meta.loadSingleModule(".")
+	if mDiags.HasErrors() {
+		diags = diags.Append(mDiags)
+		stateMigrate.Diagnostics(diags)
+		return 1
+	}
+
+	smi := root.StateMigrationInstructions
+
+	if smi == nil {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"No state migration instructions found",
+			"No instructions were found in the configuration files. Please ensure that a file with a .tfmigrate.hcl extension is present and contains valid state migration instructions.",
+		))
+		stateMigrate.Diagnostics(diags)
+		return 1
+	}
+
+	var source string
+	if smi.Backend != nil {
+		source = fmt.Sprintf("backend %q", smi.Backend.Type)
+	} else if smi.StateStore != nil {
+		source = fmt.Sprintf("state store %q (%s)", smi.StateStore.Type,
+			smi.StateStore.ProviderAddr)
+	}
+	var destination string
+	if root.Backend != nil {
+		destination = fmt.Sprintf("backend %q", root.Backend.Type)
+	} else if root.StateStore != nil {
+		destination = fmt.Sprintf("state store %q (%s)", root.StateStore.Type,
+			root.StateStore.ProviderAddr)
+	}
+
+	stateMigrate.Log("Migrating state from %s to %s...", source, destination)
+
+	// TODO: Load the source backend
+	// TODO: Load the destination backend
+	// TODO: Perform the migration from source to destination
 
 	diags = diags.Append(errors.New("Not implemented yet"))
 	stateMigrate.Diagnostics(diags)
