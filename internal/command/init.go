@@ -372,13 +372,13 @@ const (
 	SafeInitActionNotRelevant    SafeInitAction = 'N' // For when a state store isn't in use at all!
 )
 
-// getProvidersFromConfig determines what providers are required by the given configuration data.
+// getProvidersFromPSSConfig determines what providers are required by the given configuration data.
 // The method downloads any missing providers that aren't already downloaded and then returns
 // dependency lock data based on the configuration.
 // The dependency lock file itself isn't updated here.
 //
 // Calling code is responsible for validating inputs to this method, e.g. mutually exclusive flags.
-func (c *InitCommand) getProvidersFromConfig(ctx context.Context, config *configs.Config, upgrade bool, pluginDirs []string, flagLockfile string, view views.Init) (output bool, resultingLocks *depsfile.Locks, safeInitAction SafeInitAction, authResult *getproviders.PackageAuthenticationResult, diags tfdiags.Diagnostics) {
+func (c *InitCommand) getProvidersFromPSSConfig(ctx context.Context, config *configs.Config, upgrade bool, pluginDirs []string, flagLockfile string, view views.Init) (output bool, resultingLocks *depsfile.Locks, safeInitAction SafeInitAction, authResult *getproviders.PackageAuthenticationResult, diags tfdiags.Diagnostics) {
 	if config == nil {
 		return false, nil, SafeInitActionNotRelevant, nil, diags
 	}
@@ -395,13 +395,21 @@ func (c *InitCommand) getProvidersFromConfig(ctx context.Context, config *config
 	diags = diags.Append(c.providerDevOverrideInitWarnings())
 
 	// Collect the provider dependencies from the configuration.
-	reqs, hclDiags := config.ProviderRequirements()
+	allReqs, hclDiags := config.ProviderRequirements()
 	diags = diags.Append(hclDiags)
 	if hclDiags.HasErrors() {
 		return false, nil, SafeInitActionInvalid, nil, diags
 	}
 
-	reqs = c.removeDevOverrides(reqs)
+	// allReqs = c.removeDevOverrides(allReqs)
+
+	// filter out only PSS providers from allReqs
+	reqs := make(providerreqs.Requirements, 1)
+	for providerReq, cons := range allReqs {
+		if providerReq.Equals(config.Module.StateStore.ProviderAddr) {
+			reqs[providerReq] = cons
+		}
+	}
 
 	for providerAddr := range reqs {
 		if providerAddr.IsLegacy() {
@@ -569,34 +577,32 @@ func (c *InitCommand) getProvidersFromConfig(ctx context.Context, config *config
 	return true, configLocks, safeInitAction, stateStoreProviderAuthResult, diags
 }
 
-// getProvidersFromState determines what providers are required by the given state data.
+// getProviders determines what providers are required by the given state data.
 // The method downloads any missing providers that aren't already downloaded and then returns
 // dependency lock data based on the state.
 // The calling code is assumed to have already called getProvidersFromConfig, which is used to
 // supply the configLocks argument.
 // The dependency lock file itself isn't updated here.
-func (c *InitCommand) getProvidersFromState(ctx context.Context, state *states.State, configReqs providerreqs.Requirements, configLocks *depsfile.Locks, pluginDirs []string, view views.Init) (output bool, resultingLocks *depsfile.Locks, diags tfdiags.Diagnostics) {
-	ctx, span := tracer.Start(ctx, "install providers from state")
+func (c *InitCommand) getProviders(ctx context.Context, config *configs.Config, state *states.State, configLocks *depsfile.Locks, pluginDirs []string, view views.Init) (output bool, resultingLocks *depsfile.Locks, diags tfdiags.Diagnostics) {
+	ctx, span := tracer.Start(ctx, "install providers")
 	defer span.End()
 
-	if state == nil {
-		// if there is no state there are no providers to get
-		return false, depsfile.NewLocks(), diags
+	// Dev overrides cause the result of "terraform init" to be irrelevant for
+	// any overridden providers, so we'll warn about it to avoid later
+	// confusion when Terraform ends up using a different provider than the
+	// lock file called for.
+	diags = diags.Append(c.providerDevOverrideInitWarnings())
+
+	// First we'll collect all the provider dependencies we can see in the
+	// configuration and the state.
+	reqs, hclDiags := config.ProviderRequirements()
+	diags = diags.Append(hclDiags)
+	if hclDiags.HasErrors() {
+		return false, nil, diags
 	}
-
-	// Get the state's provider requirements
-	reqs := state.ProviderRequirements()
-
-	// Those requirements lack version constraint data. That matters if the configuration is using a
-	// pre-release of a provider, because installer logic will only be able to use a pre-release of a
-	// provider if a version constraint pins to that pre-release.
-	//
-	// So, we use configuration reqs to replace all entries in the state's requirements with entries
-	// from the config requirements, which may contain additional version constraint information.
-	for providerAddr := range reqs {
-		if r, ok := configReqs[providerAddr]; ok {
-			reqs[providerAddr] = r
-		}
+	if state != nil {
+		stateReqs := state.ProviderRequirements()
+		reqs = reqs.Merge(stateReqs)
 	}
 
 	for providerAddr := range reqs {
