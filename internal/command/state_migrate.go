@@ -112,6 +112,67 @@ func (c *StateMigrateCommand) Run(rawArgs []string) int {
 	return 1
 }
 
+// func (c *StateMigrateCommand) srcBackendFromStateMigrationInstructions(root *configs.Module, locks *depsfile.Locks, viewType arguments.ViewType) (backendrun.OperationsBackend, tfdiags.Diagnostics) {
+// 	var diags tfdiags.Diagnostics
+
+// 	sm := root.StateMigrationInstructions
+
+// 	var opts *BackendOpts
+// 	switch {
+// 	case sm.Backend != nil:
+// 		opts = &BackendOpts{
+// 			BackendConfig: sm.Backend,
+// 			Locks:         locks,
+// 			ViewType:      viewType,
+// 		}
+// 	case sm.StateStore != nil:
+// 		// Annotate state_store config representation with info about how the provider
+// 		// is supplied to Terraform.
+// 		isReattached, err := reattach.IsProviderReattached(sm.StateStore.ProviderAddr, os.Getenv("TF_REATTACH_PROVIDERS"))
+// 		if err != nil {
+// 			panic(fmt.Sprintf("Unable to determine if provider %s is reattached while initializing the state store. This is a bug in Terraform and should be reported: %v", sm.StateStore.ProviderAddr.ForDisplay(), err))
+// 		}
+// 		sm.StateStore.ProviderSupplyMode = getproviders.DetermineProviderSupplyMode(c.Meta.isProviderDevOverride(sm.StateStore.ProviderAddr), isReattached, sm.StateStore.ProviderAddr.IsBuiltIn())
+
+// 		// Check the provider for state storage is present, either via the dependency lock file or
+// 		// supplied via developer overrides, reattach config, or being built-in.
+// 		//
+// 		// Remember, the (Meta).backend method is used for non-init commands, so we expect dependency locks
+// 		// to be present or for the provider to be otherwise available, e.g. via reattach config.
+// 		depsDiags := sm.StateStore.VerifyDependencySelection(locks, root.ProviderRequirements, sm.StateStore.ProviderSupplyMode)
+// 		diags = diags.Append(depsDiags)
+// 		if depsDiags.HasErrors() {
+// 			return nil, diags
+// 		}
+
+// 		opts = &BackendOpts{
+// 			StateStoreConfig: sm.StateStore,
+// 			Locks:            locks,
+// 			ViewType:         viewType,
+// 		}
+// 	default:
+// 		diags = diags.Append(tfdiags.Sourceless(
+// 			tfdiags.Error,
+// 			"Missing state migration configuration",
+// 			"One of 'backend' or 'state_store' blocks must be present in the state migration instructions.",
+// 		))
+// 		return nil, diags
+// 	}
+
+// 	// This method should not be used for init commands,
+// 	// so we always set this value as false.
+// 	opts.Init = false
+
+// 	// Load the backend
+// 	be, beDiags := c.Meta.Backend(opts)
+// 	diags = diags.Append(beDiags)
+// 	if beDiags.HasErrors() {
+// 		return nil, diags
+// 	}
+
+// 	return be, diags
+// }
+
 func (c *StateMigrateCommand) Help() string {
 	helpText := `
 Usage: terraform [global options] state migrate [options]

@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/cli"
 )
 
-func TestStateMigrate_basic(t *testing.T) {
+func TestStateMigrate_fromBackendToBackend(t *testing.T) {
 	ui := cli.NewMockUi()
 	view, done := testView(t)
 	c := &StateMigrateCommand{
@@ -46,6 +46,18 @@ func TestStateMigrate_basic(t *testing.T) {
 	if !strings.Contains(out.Stderr(), expectedMsg) {
 		t.Fatalf("expected output %q, got %q", expectedMsg, out.All())
 	}
+}
+
+func TestStateMigrate_fromBackendToStateStore(t *testing.T) {
+	t.Fatal("TODO")
+}
+
+func TestStateMigrate_fromStateStoreToStateStore(t *testing.T) {
+	t.Fatal("TODO")
+}
+
+func TestStateMigrate_fromStateStoreToBackend(t *testing.T) {
+	t.Fatal("TODO")
 }
 
 func TestStateMigrate_nonExistentLockFiles(t *testing.T) {
